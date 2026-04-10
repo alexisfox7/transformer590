@@ -1,0 +1,26 @@
+# Overleaf-linked subrepo — leave alone, do not absorb
+paper/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Notebook
+.ipynb_checkpoints/
+
+# Experiment outputs (checkpoints, results, logs)
+binary_suffix_experiment/
+runs/
+logs/
+wandb/
+*.pt
+*.ckpt
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
