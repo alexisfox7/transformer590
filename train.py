@@ -23,8 +23,7 @@ def get_lr(step, warmup_steps, base_lr):
 def evaluate_detailed(model, X_eval, y_eval, device, batch_size=2048):
     model.eval()
     num_classes = int(y_eval.max().item()) + 1
-    correct_per_class = torch.zeros(num_classes, dtype=torch.long)
-    total_per_class = torch.zeros(num_classes, dtype=torch.long)
+    confusion = torch.zeros(num_classes, num_classes, dtype=torch.long)
     all_correct = 0
     all_total = 0
 
@@ -32,24 +31,26 @@ def evaluate_detailed(model, X_eval, y_eval, device, batch_size=2048):
         x = X_eval[i : i + batch_size].to(device)
         y = y_eval[i : i + batch_size].to(device)
         preds = model(x).argmax(dim=-1)
-        correct = preds == y
 
-        all_correct += correct.sum().item()
+        all_correct += (preds == y).sum().item()
         all_total += y.size(0)
 
-        for c in range(num_classes):
-            mask_c = y == c
-            correct_per_class[c] += (correct & mask_c).sum().item()
-            total_per_class[c] += mask_c.sum().item()
+        for true_c in range(num_classes):
+            mask = y == true_c
+            if mask.any():
+                pred_c = preds[mask]
+                for pc in range(num_classes):
+                    confusion[true_c, pc] += (pred_c == pc).sum().item()
 
     overall_acc = all_correct / all_total
     class_acc = {}
     for c in range(num_classes):
-        if total_per_class[c] > 0:
-            class_acc[c] = correct_per_class[c].item() / total_per_class[c].item()
+        total = confusion[c].sum().item()
+        if total > 0:
+            class_acc[c] = confusion[c, c].item() / total
         else:
             class_acc[c] = float("nan")
-    return overall_acc, class_acc
+    return overall_acc, class_acc, confusion
 
 
 @torch.no_grad()
@@ -142,7 +143,7 @@ def train_experiment(base: int, p: int, save_dir: str, cfg: Config, resume: bool
 
     history = {
         "epoch": [], "train_loss": [], "train_acc": [], "test_acc": [],
-        "class_acc": [], "examples_seen": [],
+        "class_acc": [], "confusion": [], "examples_seen": [],
     }
     start_epoch = 0
     global_step = 0
@@ -215,7 +216,7 @@ def train_experiment(base: int, p: int, save_dir: str, cfg: Config, resume: bool
 
         avg_loss = epoch_loss / max(epoch_total, 1)
         train_acc = epoch_correct / max(epoch_total, 1)
-        test_acc, class_acc = evaluate_detailed(model, X_eval, y_eval, device)
+        test_acc, class_acc, conf_mat = evaluate_detailed(model, X_eval, y_eval, device)
         elapsed = time.time() - t0
         completed_epochs = epoch + 1
 
@@ -224,6 +225,7 @@ def train_experiment(base: int, p: int, save_dir: str, cfg: Config, resume: bool
         history["train_acc"].append(train_acc)
         history["test_acc"].append(test_acc)
         history["class_acc"].append({str(k): v for k, v in class_acc.items()})
+        history["confusion"].append(conf_mat.tolist())
         history["examples_seen"].append(
             (history["examples_seen"][-1] if history["examples_seen"] else 0) + epoch_total
         )
@@ -273,7 +275,7 @@ def train_experiment(base: int, p: int, save_dir: str, cfg: Config, resume: bool
     if os.path.exists(best_model_path):
         model.load_state_dict(torch.load(best_model_path, map_location=device))
 
-    final_acc, final_class_acc = evaluate_detailed(model, X_eval, y_eval, device)
+    final_acc, final_class_acc, _ = evaluate_detailed(model, X_eval, y_eval, device)
 
     residue_analysis = {}
     if p >= 2:
