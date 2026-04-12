@@ -50,7 +50,7 @@ def class_acc_matrix(result):
     return M
 
 
-def plot_grokking(result, out_path, show_bits=True):
+def plot_grokking(result, out_path, show_bits=True, log_x=True):
     """Three-panel figure: test acc curve, per-class heatmap, per-class lines."""
     B = result["base"]
     p = result["p"]
@@ -63,8 +63,10 @@ def plot_grokking(result, out_path, show_bits=True):
 
     M = class_acc_matrix(result)  # K x T
 
-    fig = plt.figure(figsize=(12, 10), constrained_layout=True)
+    fig = plt.figure(figsize=(14, 10), constrained_layout=True)
     gs = fig.add_gridspec(3, 1, height_ratios=[1, 1.3, 1.3])
+
+    x_label = "epoch (log scale)" if log_x else "epoch"
 
     # ── Row 1: overall curves ────────────────────────────────────────────
     ax1 = fig.add_subplot(gs[0])
@@ -75,7 +77,8 @@ def plot_grokking(result, out_path, show_bits=True):
     ax1.set_ylabel("accuracy")
     ax1.set_ylim(-0.02, 1.02)
     ax1.set_xlim(epochs[0], epochs[-1])
-    ax1.set_xscale("log")
+    if log_x:
+        ax1.set_xscale("log")
     ax1.grid(alpha=0.3)
     ax1.legend(loc="lower right", fontsize=9)
     ax1.set_title(
@@ -95,7 +98,8 @@ def plot_grokking(result, out_path, show_bits=True):
         interpolation="nearest",
         extent=[epochs[0] - 0.5, epochs[-1] + 0.5, -0.5, K - 0.5],
     )
-    ax2.set_xscale("log")
+    if log_x:
+        ax2.set_xscale("log")
     ax2.set_ylabel("class index (n mod 2^p)")
     ax2.set_xlabel("")
     cbar = fig.colorbar(im, ax=ax2, shrink=0.85, pad=0.01)
@@ -111,7 +115,6 @@ def plot_grokking(result, out_path, show_bits=True):
     # ── Row 3: per-class lines, colored by low-bit identity if small p ──
     ax3 = fig.add_subplot(gs[2])
     if show_bits and p <= 3:
-        # Color each class by its low bit (bit 0): even classes one color, odd another
         cmap_even = plt.cm.Blues
         cmap_odd = plt.cm.Oranges
         even_classes = [k for k in range(K) if k % 2 == 0]
@@ -127,10 +130,11 @@ def plot_grokking(result, out_path, show_bits=True):
         for k in range(K):
             ax3.plot(epochs, M[k], color=cmap(k / max(1, K - 1)), lw=1, alpha=0.7)
     ax3.axhline(1.0 / K, color="gray", ls="--", lw=1, alpha=0.5)
-    ax3.set_xscale("log")
+    if log_x:
+        ax3.set_xscale("log")
     ax3.set_ylim(-0.02, 1.02)
     ax3.set_xlim(epochs[0], epochs[-1])
-    ax3.set_xlabel("epoch (log scale)")
+    ax3.set_xlabel(x_label)
     ax3.set_ylabel("per-class accuracy")
     ax3.grid(alpha=0.3)
     if K <= 8:
@@ -169,18 +173,21 @@ def main():
     ap.add_argument("--config", nargs=2, type=int, metavar=("BASE", "P"),
                     help="Plot just this single (B, p) config")
     ap.add_argument("--all", action="store_true", help="Plot every config in results dir")
+    ap.add_argument("--linear", action="store_true", help="Use linear x-axis instead of log")
     ap.add_argument("--results_dir", default=RESULTS_DIR)
     ap.add_argument("--fig_dir", default=FIG_DIR)
     args = ap.parse_args()
 
     os.makedirs(args.fig_dir, exist_ok=True)
+    suffix = "_linear" if args.linear else ""
+    use_log = not args.linear
 
     if args.config:
         B, p = args.config
         r = load_result(B, p, args.results_dir)
         if r is None:
             raise SystemExit(f"no result for B={B}, p={p}")
-        plot_grokking(r, os.path.join(args.fig_dir, f"grokking_B{B}_p{p}.png"))
+        plot_grokking(r, os.path.join(args.fig_dir, f"grokking_B{B}_p{p}{suffix}.png"), log_x=use_log)
         return
 
     all_results = load_all(args.results_dir)
@@ -196,7 +203,7 @@ def main():
         r = all_results.get((B, p))
         if r is None:
             continue
-        plot_grokking(r, os.path.join(args.fig_dir, f"grokking_B{B}_p{p}.png"))
+        plot_grokking(r, os.path.join(args.fig_dir, f"grokking_B{B}_p{p}{suffix}.png"), log_x=use_log)
 
 
 if __name__ == "__main__":
