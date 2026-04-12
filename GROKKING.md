@@ -128,11 +128,11 @@ standard sweep couldn't solve.
 
 **B=3, p=3 (curriculum) — staircase: chance → 1/4 → 1/2 → 1.0:**
 
-![B=3 p=3](figures/grokking_B3_p3_curriculum.png)
+![B=3 p=3](figures/grokking_B3_p3_curriculum_linear.png)
 
 **B=3, p=4 (curriculum) — four steps: chance → 1/8 → 1/4 → 1/2 → 1.0:**
 
-![B=3 p=4](figures/grokking_B3_p4_curriculum.png)
+![B=3 p=4](figures/grokking_B3_p4_curriculum_linear.png)
 
 Each step coincides with a curriculum phase transition. The model locks
 in structure on short sequences, then groks when given the full range.
