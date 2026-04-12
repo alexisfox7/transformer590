@@ -91,6 +91,23 @@ def experiment_succeeded(result, threshold):
     return result.get("completed", False) and get_result_score(result) >= threshold
 
 
+@torch.no_grad()
+def snapshot_predictions(model, X_eval, y_eval, ns_eval, device, batch_size=2048):
+    """Return per-sample (n, true_label, predicted_label) for the full eval set."""
+    model.eval()
+    all_preds = []
+    for i in range(0, len(X_eval), batch_size):
+        x = X_eval[i : i + batch_size].to(device)
+        preds = model(x).argmax(dim=-1).cpu()
+        all_preds.append(preds)
+    all_preds = torch.cat(all_preds)
+    return list(zip(
+        ns_eval.tolist(),
+        y_eval.tolist(),
+        all_preds.tolist(),
+    ))
+
+
 def train_experiment(base: int, p: int, save_dir: str, cfg: Config, resume: bool = True):
     """
     Train a single (base, p) experiment with full logging and checkpointing.
@@ -180,6 +197,11 @@ def train_experiment(base: int, p: int, save_dir: str, cfg: Config, resume: bool
     epochs_without_improve = 0
     completed_epochs = start_epoch
 
+    # Snapshots: save per-sample predictions at key moments
+    snapshots = {}  # epoch -> list of (n, true, pred)
+    last_snapshot_acc = -1.0
+    SNAPSHOT_DELTA = 0.05  # trigger snapshot when test_acc jumps by this much
+
     for epoch in range(start_epoch, cfg.n_epochs):
         model.train()
         epoch_loss = 0.0
@@ -229,6 +251,18 @@ def train_experiment(base: int, p: int, save_dir: str, cfg: Config, resume: bool
         history["examples_seen"].append(
             (history["examples_seen"][-1] if history["examples_seen"] else 0) + epoch_total
         )
+
+        # Snapshot at first epoch, when accuracy jumps, or at last epoch
+        take_snapshot = (
+            epoch == start_epoch
+            or abs(test_acc - last_snapshot_acc) >= SNAPSHOT_DELTA
+            or epoch == cfg.n_epochs - 1
+        )
+        if take_snapshot:
+            snap = snapshot_predictions(model, X_eval, y_eval, ns_eval, device)
+            snapshots[epoch] = snap
+            last_snapshot_acc = test_acc
+            print(f"    [snapshot at epoch {epoch+1}, test_acc={test_acc:.4f}]", flush=True)
 
         print(
             f"  epoch {epoch+1:>3}/{cfg.n_epochs}  "
@@ -306,6 +340,20 @@ def train_experiment(base: int, p: int, save_dir: str, cfg: Config, resume: bool
 
     with open(result_path, "w") as f:
         json.dump(results, f, indent=2)
+
+    # Save snapshots separately (too large for the results JSON)
+    if snapshots:
+        snap_path = os.path.join(save_dir, f"{exp_name}_snapshots.json")
+        snap_out = {}
+        for ep, triples in snapshots.items():
+            snap_out[str(ep)] = {
+                "epoch": ep + 1,
+                "test_acc": history["test_acc"][ep - start_epoch] if (ep - start_epoch) < len(history["test_acc"]) else None,
+                "predictions": [{"n": n, "true": t, "pred": pr} for n, t, pr in triples],
+            }
+        with open(snap_path, "w") as f:
+            json.dump(snap_out, f)
+        print(f"[{exp_name}] Saved {len(snapshots)} snapshots to {snap_path}")
 
     status = "SUCCESS" if success else "NEEDS RETRY"
     print(f"[{exp_name}] Done. final={final_acc:.4f} best={best_acc:.4f} [{status}]")
