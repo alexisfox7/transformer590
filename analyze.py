@@ -28,7 +28,12 @@ def load_result(base, p, results_dir=RESULTS_DIR):
 def load_all(results_dir=RESULTS_DIR):
     out = {}
     for f in sorted(glob(os.path.join(results_dir, "B*_results.json"))):
+        name = os.path.basename(f)
+        if any(v in name for v in ["mod", "curriculum", "sinusoidal", "rope", "alibi"]):
+            continue
         r = json.load(open(f))
+        if "p" not in r:
+            continue
         out[(r["base"], r["p"])] = r
     return out
 
@@ -87,6 +92,7 @@ def plot_grokking(result, out_path, show_bits=True):
         cmap="RdYlGn",
         vmin=0,
         vmax=1,
+        interpolation="nearest",
         extent=[epochs[0] - 0.5, epochs[-1] + 0.5, -0.5, K - 0.5],
     )
     ax2.set_xscale("log")
@@ -130,7 +136,7 @@ def plot_grokking(result, out_path, show_bits=True):
     if K <= 8:
         ax3.legend(loc="lower right", fontsize=8, ncol=2)
 
-    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    fig.savefig(out_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
     print(f"  wrote {out_path}")
 
