@@ -8,7 +8,7 @@
 #SBATCH --time=24:00:00
 #SBATCH --requeue
 #SBATCH --exclude=dcc-h200-gpu-03
-#SBATCH --array=1-77%2
+#SBATCH --array=1-45%2
 #SBATCH --output=logs/%x-%A_%a.out
 #SBATCH --error=logs/%x-%A_%a.err
 
