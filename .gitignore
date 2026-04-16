@@ -20,6 +20,9 @@ wandb/
 *.pt
 *.ckpt
 
+# Markdown notes
+*.md
+
 # OS / editor
 .DS_Store
 .vscode/
